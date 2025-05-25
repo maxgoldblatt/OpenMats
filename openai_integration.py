@@ -26,8 +26,12 @@ def generate_response(user_input, user_api_key, model):
     # Reformat Model Input to be fit needs of Response Call
     if model == 'DALLE3':
         model = 'dall-e-3'
+        resolution = "1024x1024"
     elif model == 'DALLE2':
          model == 'dall-e-2'
+         resolution = "512x512"
+
+    
 
     print("STARTED REQUEST: " + str(user_input))
     print(f"Called OpenAI Via {model}")
@@ -35,7 +39,7 @@ def generate_response(user_input, user_api_key, model):
     response = client.images.generate(
         model = "dall-e-3",
         prompt= (user_input),
-        size = "1024x1024",
+        size = resolution,
         quality="standard",
         n=1
     )

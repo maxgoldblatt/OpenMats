@@ -13,7 +13,7 @@ from . import module_color_to_normals
 from . import utils_inference
 
 """
-OpenMats Main Module - Blender Addon Core
+OpenMats Main Module - Blender Addon Core - UI Structure
 
 This is the primary module for the OpenMats addon, responsible for:
 - Registering all UI panels, operators, and properties
@@ -47,12 +47,17 @@ Primary Author: Max Goldblatt
 material = None
 generated_image_node = None
 generated_normal_node = None
+# Variables for Size control after material is Created
+texture_coordinate_node = None
+mapping_node = None
+value_node = None
 
 
 def create_mat(context, tex_path):
     """Creates Material on Selected Object"""
     global material
     global generated_image_node
+    generated_image_node = None  # clear previous generation if any
 
     # Access Booleans for Material Presets
     metal_mat = context.scene.enable_metal_mat
@@ -120,13 +125,31 @@ def create_mat(context, tex_path):
         bpy.utils.register_class(Normal_PT_UI_)
     except ValueError:
         print("INFO: Normal Class Already Registered")
-
+    
+    return
 
 def register_height_ui(context):
     """Registers Height Panel UI after Normal Map Generation"""
     bpy.utils.register_class(HeightMap_UI_Panel_PT)
     return
 
+def create_size_control():
+    # Create Tex Coord Node
+    texture_coordinate_node = material.node_tree.nodes.new(type='ShaderNodeTexCoord')
+    texture_coordinate_node.location.x = -500
+    texture_coordinate_node.location.y = 0
+    # Create Mapping Node
+    mapping_node = material.node_tree.nodes.new(type='ShaderNodeMapping')
+    mapping_node.location.x = -700
+    mapping_node.location.y = texture_coordinate_node.location.y
+    # Create Value Node to Link into Bottom of the Tex Coord Node
+    value_node = material.node_tree.nodes.new(type='ShaderNodeValue')
+    value_node.location.x = - 600
+    value_node.location.y = mapping_node.location.y - 300
+    value_node.label = "Scale"
+    value_node.outputs[0].default_value = 1.0  # Set default value
+
+    return texture_coordinate_node, mapping_node, value_node
 
 class UIPanel (bpy.types.Panel):
     """Main UI Panel to host addon"""
@@ -220,13 +243,16 @@ class send_prompt (bpy.types.Operator):
                 create_mat(context, tex_path)
                 
                 self.report({'INFO'}, "Completed Generation.")
+                print("------------------------------")
 
                 return {'FINISHED'}
             else:
                 self.report({'ERROR'}, 'No Key Given.')
+                print("------------------------------")
         
         else:
             self.report({'ERROR'}, "Invalid Prompt. Please change prompt.")
+            print("------------------------------")
         return {'FINISHED'}
 
 
@@ -300,6 +326,9 @@ class create_normal_map_OT(bpy.types.Operator):
         output_node.location = input_node.location
         output_node.location[1] -= input_node.width*1.2
         output_node.image = output_bl_img
+        
+        global generated_normal_node # Global Generated Normal Node
+        generated_normal_node = output_node
 
         # Create normal vector node & link nodes
         normal_vec_node = material.node_tree.nodes.new(
@@ -326,16 +355,16 @@ class create_normal_map_OT(bpy.types.Operator):
 
 
 class create_height_map_OT(bpy.types.Operator):
-    """Creates height map"""
+    """Creates height map & Texture Coordinate Controls within Material"""
     bl_idname = "object.create_height"
     bl_label = "Generate Height Map (CPU)"
 
     # Modified & extended from https://github.com/HugoTini/NormalHeight/blob/master/__init__.py
     def execute(self, context):
-        global generated_normal_node
-        global material
-        global generated_image_node
-        generated_normal_node = generated_image_node
+        global generated_normal_node, material, generated_image_node
+        global texture_coordinate_node, mapping_node, value_node
+
+        #generated_normal_node = generated_image_node
         
         # Get Input from selected node
         input_img = generated_normal_node.image
@@ -406,6 +435,31 @@ class create_height_map_OT(bpy.types.Operator):
         displacement_node.location.x = 100
         displacement_node.location.y = -300
 
+        #### Texture Coordinate Controls within Material ####
+        
+        # Check if the nodes already exist
+        if texture_coordinate_node is None and mapping_node is None and value_node is None:
+            # Create Node Setup & Position
+            texture_coordinate_node, mapping_node, value_node = create_size_control()
+        else:
+            # Delete Existing Nodes
+            for node in [texture_coordinate_node, mapping_node, value_node]:
+                if node and node.name in material.node_tree.nodes:
+                    try:
+                        material.node_tree.nodes.remove(node)
+                    except Exception as e:
+                        print(f"Failed to remove node '{node.name}': {e}")
+            
+            # Reset the nodes
+            texture_coordinate_node = None
+            mapping_node = None
+            value_node = None
+
+            # Create Node Setup & Position
+            texture_coordinate_node, mapping_node, value_node = create_size_control()
+
+        
+
         # Get Active Material Output node & make links
         output_node = None
         nodes = material.node_tree.nodes
@@ -418,6 +472,29 @@ class create_height_map_OT(bpy.types.Operator):
         material.node_tree.links.new(displacement_node.outputs[0],
                                 output_node.inputs[2])
         
+        # Make Links to Texture Coordinate Node
+        # Connect TexCoord → Mapping
+        if texture_coordinate_node and mapping_node:
+            tex_coord_output = texture_coordinate_node.outputs.get('Generated')
+            mapping_input = mapping_node.inputs.get('Vector')
+            if tex_coord_output and mapping_input:
+                material.node_tree.links.new(tex_coord_output, mapping_input)
+
+        # Connect Mapping → Texture Node Vector Inputs
+        mapping_output = mapping_node.outputs.get('Vector')
+        for tex_node in [generated_image_node, generated_normal_node, height_node]:
+            if tex_node and 'Vector' in tex_node.inputs:
+                material.node_tree.links.new(mapping_output, tex_node.inputs['Vector'])
+        
+        # Link Value Node → Mapping Node Scale Input
+        if value_node and mapping_node:
+            value_output = value_node.outputs.get('Value')
+            scale_input = mapping_node.inputs.get('Scale')
+            if value_output and scale_input:
+                material.node_tree.links.new(value_output, scale_input)
+        
+        print("------------------------------")
+
         return {'FINISHED'}
 
 
