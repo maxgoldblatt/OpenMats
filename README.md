@@ -5,7 +5,7 @@ An addon that integrates OpenAI prompt-based image generation directly into Blen
 
 # Installation
 1. Download the addon from the [main](https://github.com/maxgoldblatt/OpenMats) branch of the Openmats Github repository.
-2. Open Blender
+2. Open Blender. Must be higher than Blender version 4.3.0.
 3. Navigate to:
 ```bash
 Edit > Preferences > Add - Ons > Install from Disk
@@ -60,6 +60,8 @@ Edit > Preferences > Add - Ons > Install from Disk
 ### Error immediately after image generation
 - **Cause**: The Blender file was never saved, so there’s no base directory to store output textures.
 - **Fix**: Save your `.blend` file before using the addon. This ensures the addon can create an `/Textures/` folder in the correct directory and save the generated texture within the `/Textures/` directory.
+
+### Ensure Blender version is higher than 4.3.0 prior to installation
 
 ## Credits
 - Main Contributor: Max Goldblatt
